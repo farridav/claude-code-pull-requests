@@ -1,0 +1,88 @@
+---
+name: Build
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: Run checks and tests
+        run: |
+          make deps
+          make check
+          make test
+
+      - name: Package
+        run: make package
+
+  update_release_draft:
+    permissions:
+      contents: write
+      pull-requests: read
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Once plugin.json is bumped to a version not yet released, the draft
+      # takes that version. Until then the draft previews the next version from
+      # the labels, and its title says to bump plugin.json before publishing.
+      - name: Read the plugin's version
+        id: plugin
+        run: |
+          version=$(jq -r .version .claude-plugin/plugin.json)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null; then
+            echo "is_ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Update the draft release
+        id: draft
+        uses: release-drafter/release-drafter@v7
+        with:
+          config-name: release-drafter.yml
+          version: ${{ steps.plugin.outputs.is_ready == 'true' && steps.plugin.outputs.version || '' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Mark the draft as not ready
+        if: steps.plugin.outputs.is_ready != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.draft.outputs.tag_name }}
+        run: |
+          gh release edit "$TAG" --title "Not ready: bump plugin.json with make version before publishing"
+
+      # Releases are immutable once published, so the package goes on the
+      # draft now, ready for whenever it is published.
+      - name: Attach the packaged plugin to the draft
+        if: steps.plugin.outputs.is_ready == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.draft.outputs.tag_name }}
+        run: gh release upload "$TAG" "$(make --silent package)" --clobber

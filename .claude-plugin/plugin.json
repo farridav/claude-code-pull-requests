@@ -1,0 +1,29 @@
+{
+  "name": "pull-requests",
+  "version": "0.1.0",
+  "description": "Open pull requests from GitHub and GitLab in a pane beside the chat: the session's own repos first, then yours elsewhere, each with its checks, review and draft state",
+  "author": {
+    "name": "farridav"
+  },
+  "homepage": "https://github.com/farridav/claude-code-pull-requests",
+  "repository": "https://github.com/farridav/claude-code-pull-requests",
+  "license": "MIT",
+  "keywords": ["github", "gitlab", "pull-requests", "merge-requests", "ci", "review"],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "gitlabHosts": {
+      "type": "string",
+      "title": "GitLab hosts",
+      "description": "Comma-separated GitLab hosts to ask (each needs glab auth login). Only these are asked, never a host a repo's remote names on its own",
+      "default": "gitlab.com",
+      "required": false
+    },
+    "refreshMinutes": {
+      "type": "number",
+      "title": "Refresh every (minutes)",
+      "description": "How often the pane asks GitHub and GitLab again",
+      "default": 5,
+      "required": false
+    }
+  }
+}

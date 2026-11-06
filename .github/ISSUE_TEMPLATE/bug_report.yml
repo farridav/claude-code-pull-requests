@@ -1,0 +1,45 @@
+name: Bug report
+description: Something in the mod doesn't work as described
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: dropdown
+    id: service
+    attributes:
+      label: Service
+      options: [GitHub, GitLab.com, Self-hosted GitLab]
+    validations:
+      required: true
+  - type: input
+    id: claude-version
+    attributes:
+      label: Claude Code version
+      description: The output of `claude --version`.
+    validations:
+      required: true
+  - type: input
+    id: git-version
+    attributes:
+      label: gh / glab version
+      description: The output of `gh --version` or `glab --version`.
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where you run Claude Code
+      options: [Terminal, Desktop app, VS Code, Web or mobile, Other]
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Any `pull-requests:` lines from the transcript, or from `claude --debug`.
+      render: text
