@@ -81,7 +81,7 @@ glab auth login --hostname gitlab.com
 
 Or skip that: a service you're not logged in to shows in the pane with a **Log in** button. It links to the token page with the scopes `gh` or `glab` asks for filled in, and logs the CLI in with the token you paste. The token goes to the CLI on stdin, never to Claude.
 
-`gh` and `glab` run with the `env` from your Claude Code settings, so a `GH_TOKEN`, `GITLAB_TOKEN` or proxy set there is used too.
+`gh` and `glab` run with the `env` from your user settings (`~/.claude/settings.json`), so a `GH_TOKEN`, `GITLAB_TOKEN` or proxy set there is used too. A repo's own settings are left out, so a repo can't point them at a different `gh`.
 
 ## Troubleshooting
 
@@ -103,7 +103,7 @@ Or skip that: a service you're not logged in to shows in the pane with a **Log i
 
 ## What it calls on `$`
 
-`clock.every`, `clock.now`, `command.register`, `fs.list`, `fs.read`, `process.run` (git, gh, glab), `prompt.submit` (Review), `session.root`, `settings.read` (the `env` key), `state.get`, `state.set`, `ui.open`, `ui.resolve`, `ui.toast`.
+`clock.every`, `clock.now`, `command.register`, `fs.list`, `fs.read`, `process.run` (git, gh, glab), `prompt.submit` (Review), `session.root`, `settings.read` (the user settings' `env`), `state.get`, `state.set`, `ui.open`, `ui.resolve`, `ui.toast`.
 
 ## Commands it runs
 

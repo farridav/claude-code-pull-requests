@@ -22,7 +22,7 @@ const REMOTES = [
 /** Stands in for the engine: one repo under /ws, gh answering with the fixture, glab not logged in. */
 function workspace(on: On, calls: string[][] = [], stdins: string[] = []) {
   mock.clock(on)
-  on('settings.read', () => ({ value: { env: { PATH: '/fakes:/usr/bin', NO_COLOR: '0' } } }))
+  on('settings.read', (_, e) => ({ value: e.source === 'user' ? { env: { PATH: '/fakes:/usr/bin', NO_COLOR: '0' } } : { env: { PATH: '/repo/bin' } } }))
   on('session.root', () => ({ value: '/ws' }))
   on('fs.list', (_, e) => ({ value: TREE[e.path] ?? [] }))
   on('process.run', (_, e) => {

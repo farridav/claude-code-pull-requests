@@ -35,9 +35,9 @@ export const register: Register = (on, options) => {
   let io: Io | null = null
 
   on('session.start', async ($, e, next) => {
-    // The settings' env (GH_TOKEN, a proxy, PATH) for gh and glab, as Claude's own commands get it:
-    // a session the desktop app starts does not pass it on to a plugin's commands by itself.
-    const settingsEnv = ((await $.settings.read({ key: 'env' })) ?? {}) as Record<string, string>
+    // The user settings' env (GH_TOKEN, a proxy) for gh and glab: a session the desktop app starts does not
+    // pass it on to a plugin's commands. User settings alone: a repo's own could aim PATH at a fake gh, run unasked.
+    const settingsEnv = ((await $.settings.read({ source: 'user' })) as { env?: Record<string, string> }).env ?? {}
     const local: Io = {
       list: path => $.fs.list(path),
       readFile: path => $.fs.read(path),
