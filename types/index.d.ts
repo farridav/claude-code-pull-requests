@@ -1,8 +1,8 @@
-/** A pull request (GitHub) or merge request (GitLab), as the pane draws it. */
+/** A pull request (GitHub, Azure DevOps) or merge request (GitLab), as the pane draws it. */
 export type PullRequest = {
-  service: 'github' | 'gitlab'
+  service: 'github' | 'gitlab' | 'azure'
   host: string
-  /** `owner/name`, or a GitLab project's full path with its groups. */
+  /** `owner/name`, a GitLab project's full path with its groups, or Azure DevOps' `org/project/repo`. */
   repo: string
   /** The repo the branch comes from, when it isn't `repo` (a fork). */
   headRepo: string | null
@@ -21,8 +21,12 @@ export type PullRequest = {
   updatedAt: string
 }
 
-/** A service the pane could not read for want of a login: GitHub, or one GitLab host. */
-export type Login = { service: 'github' | 'gitlab'; host: string }
+/** A service the pane could not read for want of a login: GitHub, one GitLab host, or one Azure DevOps organisation. */
+export type Login = {
+  service: 'github' | 'gitlab' | 'azure'
+  /** `github.com`, a GitLab host, or `dev.azure.com/<org>`. */
+  host: string
+}
 
 /** A git repo in the session and the `host/path` of each of its remotes. */
 export type LocalRepo = {

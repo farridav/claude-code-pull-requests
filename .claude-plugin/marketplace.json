@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "pull-requests",
-      "description": "Open pull requests from GitHub and GitLab in a pane beside the chat: the session's own repos first, then yours elsewhere, each with its checks, review and draft state, a Review button that asks Claude to review it, and Log in for a service that needs it",
+      "description": "Open pull requests from GitHub, GitLab and Azure DevOps in a pane beside the chat: the session's own repos first, then yours elsewhere, each with its checks, review and draft state, a Review button that asks Claude to review it, and Log in for a service that needs it",
       "author": {
         "name": "farridav"
       },

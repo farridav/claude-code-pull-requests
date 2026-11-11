@@ -20,7 +20,9 @@ const MINE_LIMIT = 30
 /** Per workspace repo: a busy upstream would otherwise flood the pane with strangers' PRs. */
 const REPO_LIMIT = 5
 /** Never prompt: a missing login fails and says so in the pane instead of hanging. */
-const CLI_ENV = { GH_PROMPT_DISABLED: '1', NO_COLOR: '1', LC_ALL: 'C', GIT_TERMINAL_PROMPT: '0' }
+const CLI_ENV = { GH_PROMPT_DISABLED: '1', NO_COLOR: '1', LC_ALL: 'C', GIT_TERMINAL_PROMPT: '0', AZURE_EXTENSION_USE_DYNAMIC_INSTALL: 'no' }
+/** `az` is a Python process per call: a few at a time keeps a refresh from eating the machine. */
+const AZ_CONCURRENCY = 4
 
 // ---------------------------------------------------------------- repos and remotes
 
@@ -69,8 +71,31 @@ export function parseRemote(url: string): { host: string; path: string } | null 
   const match = withScheme ?? scp
   if (!match?.[1] || !match[2]) return null
   const path = match[2].replace(/\.git$/, '').replace(/\/+$/, '')
+  const azure = parseAzureRemote(match[1].toLowerCase(), path)
+  if (azure !== undefined) return azure
   // Only the characters a repo path is made of: a hostile remote can't carry escapes or query syntax.
   return /^[\w.~-]+(\/[\w.~-]+)+$/.test(path) ? { host: match[1].toLowerCase(), path } : null
+}
+
+/**
+ * An Azure DevOps remote, in any of the forms it has had, as `dev.azure.com`
+ * and `org/project/repo` with its names decoded (a project name can hold
+ * spaces). Undefined when the host isn't Azure DevOps.
+ */
+function parseAzureRemote(host: string, path: string): { host: string; path: string } | null | undefined {
+  const parts = path.split('/')
+  let names: string[]
+  if (host === 'ssh.dev.azure.com' || host.endsWith('vs-ssh.visualstudio.com')) names = parts[0] === 'v3' ? parts.slice(1) : []
+  else if (host === 'dev.azure.com') names = parts.filter(part => part !== '_git')
+  else if (host.endsWith('.visualstudio.com')) {
+    names = [host.split('.')[0] ?? '', ...parts.filter(part => part !== '_git' && part.toLowerCase() !== 'defaultcollection')]
+  } else return undefined
+  try {
+    names = names.map(decodeURIComponent)
+  } catch {
+    return null
+  }
+  return names.length === 3 && names.every(name => /^[\w.~-][\w .~-]*$/.test(name)) ? { host: 'dev.azure.com', path: names.join('/') } : null
 }
 
 /** Each repo's remotes as `host/path`, from `git remote -v`. */
@@ -104,13 +129,19 @@ async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (item: T) 
 }
 
 /**
- * Which service a host is: GitHub, a GitLab host the person listed, or
- * neither. Only listed hosts are GitLab: a cloned repo's remote must never
+ * Which service a host is: GitHub, Azure DevOps, a GitLab host the person
+ * listed, or neither. Only listed hosts are GitLab: a cloned repo's remote must never
  * pick a host that glab, and any GITLAB_TOKEN in the environment, is sent to.
  */
-export function serviceOf(host: string, gitlabHosts: ReadonlySet<string>): 'github' | 'gitlab' | null {
+export function serviceOf(host: string, gitlabHosts: ReadonlySet<string>): PullRequest['service'] | null {
   if (host === 'github.com') return 'github'
+  if (host === 'dev.azure.com') return 'azure'
   return gitlabHosts.has(host) ? 'gitlab' : null
+}
+
+/** An `org/project` from the azureProjects setting, as Azure DevOps allows them to be named. */
+export function isAzureProject(value: string): boolean {
+  return /^[\w.-]+\/\w[\w .~-]*$/.test(value)
 }
 
 /** A host name as DNS spells it, so a setting can't pass glab a flag (`-x`) or anything else. */
@@ -289,6 +320,121 @@ export function parseGitlab(
   )
 }
 
+// ---------------------------------------------------------------- Azure DevOps
+
+export type Fetched = { pulls: PullRequest[]; errors: string[]; logins: Login[] }
+
+type AzureNode = {
+  pullRequestId: number
+  title: string
+  isDraft?: boolean
+  creationDate: string
+  mergeStatus?: string
+  createdBy?: { uniqueName?: string; displayName?: string } | null
+  reviewers?: { vote?: number }[] | null
+  repository: { name: string; project: { name: string } }
+}
+
+/** `az repos pr list` for one project: open PRs, filtered by `--creator`, `--reviewer` or `--repository`. */
+export function azureList(org: string, project: string, filter: string, top: number): string[] {
+  // `--flag=value` throughout, so a name can never be read as a flag.
+  return ['az', 'repos', 'pr', 'list', `--organization=https://dev.azure.com/${org}`, `--project=${project}`, filter, `--top=${top}`,
+    '--status=active', '--detect=false', '--only-show-errors', '--output=json']
+}
+
+export function parseAzure(org: string, alias: string, nodes: readonly AzureNode[]): PullRequest[] {
+  return nodes.map(node => {
+    const project = node.repository.project.name
+    const name = node.repository.name
+    const votes = (node.reviewers ?? []).map(reviewer => reviewer.vote ?? 0)
+    const author = node.createdBy?.uniqueName?.split('@')[0] || node.createdBy?.displayName || 'ghost'
+    return {
+      service: 'azure' as const,
+      host: 'dev.azure.com',
+      repo: `${org}/${project}/${name}`,
+      headRepo: null,
+      number: node.pullRequestId,
+      title: clean(node.title),
+      url: `https://dev.azure.com/${[org, project, '_git', name].map(encodeURIComponent).join('/')}/pullrequest/${node.pullRequestId}`,
+      author: clean(author),
+      isDraft: Boolean(node.isDraft),
+      // ponytail: checks are per-PR policy evaluations, one more az call each; add them if the pane needs them.
+      checks: null,
+      // Votes: 10 approved, 5 approved with suggestions, -5 waiting for author, -10 rejected.
+      review: votes.some(vote => vote < 0) ? ('changes' as const) : votes.some(vote => vote >= 5) ? ('approved' as const) : null,
+      hasConflicts: node.mergeStatus === 'conflicts',
+      isMine: alias === 'authored',
+      isReviewing: alias === 'reviewing',
+      // ponytail: the list has no last-updated time, so PRs sort by when they were opened.
+      updatedAt: node.creationDate,
+    }
+  })
+}
+
+/**
+ * The organisation and project `az devops configure` set as defaults, as
+ * `org/project`: what a bare `az repos pr list` asks. Null when there are none,
+ * or no az.
+ */
+export async function azureDefault(io: Io): Promise<string | null> {
+  const ran = await io
+    .run(['az', 'devops', 'configure', '--list', '--only-show-errors'], { env: CLI_ENV, timeoutMs: 30_000 })
+    .catch(() => ({ exitCode: 1, stdout: '' }))
+  if (ran.exitCode !== 0) return null
+  const org = /^organization\s*=\s*https:\/\/(?:dev\.azure\.com\/([\w.-]+)|([\w-]+)\.visualstudio\.com)\/?\s*$/m.exec(ran.stdout)
+  const project = /^project\s*=\s*([\w.~-][\w .~-]*?)\s*$/m.exec(ran.stdout)
+  const name = org?.[1] ?? org?.[2]
+  return name && project?.[1] ? `${name}/${project[1]}` : null
+}
+
+/**
+ * Open PRs from Azure DevOps through `az`: yours and those awaiting your
+ * review in az's default project, the projects in the setting and each project
+ * the remotes name, and each repo's latest. `az` asks one project at a time, so PRs in other projects
+ * aren't covered.
+ */
+async function fetchAzure(io: Io, paths: readonly string[], extraProjects: readonly string[]): Promise<Fetched> {
+  const asks: { org: string; alias: string; argv: string[] }[] = []
+  const projects = new Set<string>()
+  const fallback = await azureDefault(io)
+  // `org/project/` with no repo: a project asked for yours alone.
+  const wholeProjects = [...(fallback ? [fallback] : []), ...extraProjects].map(project => `${project}/`)
+  for (const path of [...paths, ...wholeProjects]) {
+    const [org = '', project = '', repo = ''] = path.split('/')
+    if (!projects.has(`${org}/${project}`)) {
+      projects.add(`${org}/${project}`)
+      asks.push({ org, alias: 'authored', argv: azureList(org, project, '--creator=me', MINE_LIMIT) })
+      asks.push({ org, alias: 'reviewing', argv: azureList(org, project, '--reviewer=me', MINE_LIMIT) })
+    }
+    if (repo) asks.push({ org, alias: 'repo', argv: azureList(org, project, `--repository=${repo}`, REPO_LIMIT) })
+  }
+  const results = await mapLimit(asks, AZ_CONCURRENCY, async ({ org, alias, argv }) => {
+    const ran = await io
+      .run(argv, { env: CLI_ENV, timeoutMs: 60_000 })
+      .catch(error => ({ exitCode: 1, stdout: '', stderr: String(error) }))
+    let nodes: AzureNode[] | null = null
+    try {
+      nodes = ran.exitCode === 0 ? (JSON.parse(ran.stdout) as AzureNode[]) : null
+    } catch {
+      // Not JSON: told on stderr.
+    }
+    const error = nodes ? null : clean(ran.stderr.trim().split('\n')[0] || 'failed')
+    return { org, pulls: nodes ? parseAzure(org, alias, nodes) : [], error }
+  })
+  const logins = new Set<string>()
+  const errors = new Set<string>()
+  for (const { org, error } of results) {
+    if (!error) continue
+    if (/az (devops )?login|TF400813|401|unauthori[sz]ed/i.test(error)) logins.add(org)
+    else errors.add(`Azure DevOps ${org}: ${error}`)
+  }
+  return {
+    pulls: results.flatMap(result => result.pulls).filter(pull => isLinkOn(pull.url, 'dev.azure.com')),
+    errors: [...errors],
+    logins: [...logins].map(org => ({ service: 'azure', host: `dev.azure.com/${org}` })),
+  }
+}
+
 // ---------------------------------------------------------------- fetching
 
 /**
@@ -311,19 +457,24 @@ async function graphql(io: Io, argv: string[]): Promise<{ data: Record<string, u
   return { data: body.data ?? null, error: failure }
 }
 
-export type Fetched = { pulls: PullRequest[]; errors: string[]; logins: Login[] }
-
 /**
- * Every open PR worth showing: one gh request for GitHub, and one glab request
- * per GitLab host, from the configured hosts and those in the repos' remotes.
+ * Every open PR worth showing: one gh request for GitHub, one glab request
+ * per GitLab host, from the configured hosts and those in the repos' remotes,
+ * and az requests for the repos on Azure DevOps.
  */
-export async function fetchPulls(io: Io, repos: readonly LocalRepo[], gitlabHosts: ReadonlySet<string>): Promise<Fetched> {
+export async function fetchPulls(
+  io: Io,
+  repos: readonly LocalRepo[],
+  gitlabHosts: ReadonlySet<string>,
+  azureProjects: readonly string[] = [],
+): Promise<Fetched> {
   const remotes = [...new Set(repos.flatMap(repo => repo.remotes))].map(split)
   const githubPaths = remotes.filter(one => serviceOf(one.host, gitlabHosts) === 'github').map(one => one.path)
   const gitlabByHost = new Map<string, string[]>([...gitlabHosts].map(host => [host, []]))
   for (const one of remotes) {
     if (serviceOf(one.host, gitlabHosts) === 'gitlab') gitlabByHost.set(one.host, [...(gitlabByHost.get(one.host) ?? []), one.path])
   }
+  const azurePaths = remotes.filter(one => one.host === 'dev.azure.com').map(one => one.path)
 
   const github = graphql(io, ['gh', 'api', 'graphql', '-f', `query=${githubQuery(githubPaths.slice(0, MAX_PATHS_PER_HOST))}`]).then(({ data, error }) => ({
     pulls: data ? parseGithub(data as Parameters<typeof parseGithub>[0]).filter(pull => isLinkOn(pull.url, 'github.com')) : [],
@@ -343,29 +494,31 @@ export async function fetchPulls(io: Io, repos: readonly LocalRepo[], gitlabHost
       }
     }),
   )
-  const results = await Promise.all([github, ...gitlab])
+  const [results, azure] = await Promise.all([Promise.all([github, ...gitlab]), fetchAzure(io, azurePaths.slice(0, MAX_PATHS_PER_HOST), azureProjects)])
   return {
-    pulls: dedupe(results.flatMap(result => result.pulls)),
-    errors: results.map(result => result.error).filter((error): error is string => Boolean(error)),
-    logins: results.flatMap(result => (result.login ? [result.login] : [])),
+    pulls: dedupe([...results.flatMap(result => result.pulls), ...azure.pulls]),
+    errors: [...results.map(result => result.error).filter((error): error is string => Boolean(error)), ...azure.errors],
+    logins: [...results.flatMap(result => (result.login ? [result.login] : [])), ...azure.logins],
   }
 }
 
 const TOKEN_NAME = encodeURIComponent('Claude Code pull requests')
 
-/** The page that makes a token with the scopes gh or glab asks for, filled in. */
+/** The page that makes a token with the scopes gh or glab asks for, filled in. Azure DevOps can't fill them in. */
 export function tokenPage(login: Login): string {
+  if (login.service === 'azure') return `https://${login.host}/_usersSettings/tokens`
   return login.service === 'github'
     ? `https://github.com/settings/tokens/new?scopes=repo,read:org,gist&description=${TOKEN_NAME}`
     : `https://${login.host}/-/user_settings/personal_access_tokens?name=${TOKEN_NAME}&scopes=api,write_repository`
 }
 
-/** Logs gh or glab in with a pasted token, passed on stdin so it never sits in an argument list. Resolves to the failure, or null. */
+/** Logs gh, glab or az in with a pasted token, passed on stdin so it never sits in an argument list. Resolves to the failure, or null. */
 export async function logIn(io: Io, login: Login, token: string): Promise<string | null> {
-  const argv =
-    login.service === 'github'
-      ? ['gh', 'auth', 'login', '--hostname', login.host, '--with-token']
-      : ['glab', 'auth', 'login', '--hostname', login.host, '--stdin']
+  const argv = {
+    github: ['gh', 'auth', 'login', '--hostname', login.host, '--with-token'],
+    gitlab: ['glab', 'auth', 'login', '--hostname', login.host, '--stdin'],
+    azure: ['az', 'devops', 'login', `--organization=https://${login.host}`, '--only-show-errors'],
+  }[login.service]
   const ran = await io
     .run(argv, { env: CLI_ENV, stdin: token.trim(), timeoutMs: 30_000 })
     .catch(error => ({ exitCode: 1, stdout: '', stderr: String(error) }))
@@ -398,12 +551,10 @@ export function groupPulls(pulls: readonly PullRequest[], repos: readonly LocalR
   const placed = new Set<string>()
   const groups: Group[] = []
   for (const repo of repos) {
-    const remotes = new Set(repo.remotes)
-    const here = pulls.filter(
-      pull =>
-        !placed.has(pull.url) &&
-        (remotes.has(`${pull.host}/${pull.repo}`) || (pull.headRepo !== null && remotes.has(`${pull.host}/${pull.headRepo}`))),
-    )
+    // Case-blind: GitHub, GitLab and Azure DevOps all take a repo's name in any case.
+    const remotes = new Set(repo.remotes.map(remote => remote.toLowerCase()))
+    const has = (host: string, path: string | null) => path !== null && remotes.has(`${host}/${path}`.toLowerCase())
+    const here = pulls.filter(pull => !placed.has(pull.url) && (has(pull.host, pull.repo) || has(pull.host, pull.headRepo)))
     here.forEach(pull => placed.add(pull.url))
     if (here.length) groups.push({ name: repo.name, isLocal: true, pulls: here.sort(newest) })
   }
@@ -445,9 +596,9 @@ export function stateMarks(pull: PullRequest): Mark[] {
   return out
 }
 
-/** `#12` on GitHub, `!12` on GitLab. */
+/** `#12` on GitHub, `!12` on GitLab and Azure DevOps. */
 export function reference(pull: PullRequest): string {
-  return `${pull.service === 'gitlab' ? '!' : '#'}${pull.number}`
+  return `${pull.service === 'github' ? '#' : '!'}${pull.number}`
 }
 
 /** How many PRs have each checks state, for a group's header: `✓3 ✗1`. */
