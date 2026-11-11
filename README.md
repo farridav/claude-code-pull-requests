@@ -1,6 +1,6 @@
 # pull-requests
 
-Open pull requests from GitHub and GitLab in a pane beside the chat, each with its checks, review and draft state at a glance, and a button to have Claude review it.
+Open pull requests from GitHub, GitLab and Azure DevOps in a pane beside the chat, each with its checks, review and draft state at a glance, and a button to have Claude review it.
 
 ![The pull requests pane docked beside a Claude Code session in the terminal](docs/images/terminal.png)
 
@@ -11,7 +11,7 @@ The pane opens when the session starts. It lists the open pull requests (and Git
 Each repo is a card: click its name to fold it away (`▸`) or open it again (`▾`), and its header counts its PRs and tallies their checks. A GitLab project nested in groups goes by its own name. Each title is a link to the pull request, and **Review** under it asks Claude to review it.
 
 - **Your repos** are the git repo the session starts in, or every repo below it in a folder of repos, four levels deep at most. A pull request belongs to a repo when its target or its source matches any of the repo's remotes, so your PRs from a fork land under the repo you cloned. Each repo shows its five most recently updated.
-- **Elsewhere** are the open pull requests you wrote or are asked to review, anywhere else on GitHub or the GitLab hosts you use, grouped by repo.
+- **Elsewhere** are the open pull requests you wrote or are asked to review, anywhere else on GitHub or the GitLab hosts you use, grouped by repo. On Azure DevOps, that's only within the projects your session repos are in, plus the default project you gave `az devops configure` and any in `azureProjects`: `az` asks one project at a time.
 
 In Claude Code Desktop the pane sits beside the conversation:
 
@@ -22,9 +22,9 @@ In Claude Code Desktop the pane sits beside the conversation:
 
 | Marker | Meaning |
 | --- | --- |
-| `✓` `✗` `●` `○` | Checks or pipeline passing, failing, running, or something else (cancelled, skipped, manual). Blank when there are none |
+| `✓` `✗` `●` `○` | Checks or pipeline passing, failing, running, or something else (cancelled, skipped, manual). Blank when there are none, and always blank on Azure DevOps |
 | `draft` | A draft |
-| `✔ approved` `✎ changes` | Approved, or changes requested (GitHub only: GitLab reports approval alone) |
+| `✔ approved` `✎ changes` | Approved, or changes requested (GitLab reports approval alone). On Azure DevOps, a vote to wait for the author or a rejection counts as changes |
 | `⚠ conflicts` | Conflicts with its target branch |
 | `◎ review` | Your review is requested |
 | `@name` | Its author, when it isn't you |
@@ -38,9 +38,10 @@ In Claude Code Desktop the pane sits beside the conversation:
 | Setting | Default | What it does |
 | --- | --- | --- |
 | `gitlabHosts` | `gitlab.com` | GitLab hosts to ask, comma-separated: your merge requests there, and those of any session repo whose remote is on one. Only these are asked, never a host a remote names on its own. Blank it if you don't use GitLab |
+| `azureProjects` | blank | Azure DevOps projects to ask for your pull requests and review requests, as comma-separated `org/project` (`acme/Mobile, acme/Platform`). `az`'s default project and those your repos are in are always asked |
 | `refreshMinutes` | `5` | How often the pane asks again, once a minute at most |
 
-GitHub Enterprise isn't covered yet: only `github.com`.
+GitHub Enterprise isn't covered yet: only `github.com`. Nor is Azure DevOps Server: only `dev.azure.com` (and the older `visualstudio.com` remotes).
 
 ## Installation
 
@@ -65,6 +66,7 @@ In the desktop app, where `/plugin` does not run: click + next to the prompt box
 - The command-line tool for each service you use, on the `PATH`; either is optional. The pane reads everything through them, with the logins you already have, and needs no token of its own.
   - **GitHub:** [GitHub CLI](https://cli.github.com) (`gh`)
   - **GitLab:** [GitLab CLI](https://gitlab.com/gitlab-org/cli#installation) (`glab`), for gitlab.com or your own hosts
+  - **Azure DevOps:** [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) (`az`) with its `azure-devops` extension (`az extension add --name azure-devops`). It asks the projects your session repos are on, and the default project from `az devops configure`
 - macOS or Linux. Windows paths are untested.
 
 ## Logging in
@@ -79,17 +81,23 @@ gh auth login
 glab auth login --hostname gitlab.com
 ```
 
-Or skip that: a service you're not logged in to shows in the pane with a **Log in** button. It links to the token page with the scopes `gh` or `glab` asks for filled in, and logs the CLI in with the token you paste. The token goes to the CLI on stdin, never to Claude.
+```bash
+az login
+```
 
-`gh` and `glab` run with the `env` from your user settings (`~/.claude/settings.json`), so a `GH_TOKEN`, `GITLAB_TOKEN` or proxy set there is used too. A repo's own settings are left out, so a repo can't point them at a different `gh`.
+Or, with a personal access token that has the Code (Read) scope, `az devops login --organization https://dev.azure.com/<org>`.
+
+Or skip that: a service you're not logged in to shows in the pane with a **Log in** button. It links to the token page with the scopes `gh` or `glab` asks for filled in (on Azure DevOps, give it Code (Read) yourself), and logs the CLI in with the token you paste. The token goes to the CLI on stdin, never to Claude.
+
+`gh`, `glab` and `az` run with the `env` from your user settings (`~/.claude/settings.json`), so a `GH_TOKEN`, `GITLAB_TOKEN` or proxy set there is used too. A repo's own settings are left out, so a repo can't point them at a different `gh`.
 
 ## Troubleshooting
 
-**A service shows Log in though you're logged in.** Its token has expired or lacks a scope: `gh auth status` or `glab auth status --hostname <host>` says which. Log in again, from a terminal or the pane.
+**A service shows Log in though you're logged in.** Its token has expired or lacks a scope: `gh auth status`, `glab auth status --hostname <host>` or `az devops project list --organization https://dev.azure.com/<org>` says which. Log in again, from a terminal or the pane.
 
 **A GitLab host is missing.** Only the hosts in `gitlabHosts` are asked. Add yours there.
 
-**A repo of yours has no card.** A repo shows only when it has open pull requests, and only when one of its remotes is on github.com or a host in `gitlabHosts`. Start Claude Code in the repo, or in the folder that holds it, at most four levels up.
+**A repo of yours has no card.** A repo shows only when it has open pull requests, and only when one of its remotes is on github.com, dev.azure.com or a host in `gitlabHosts`. Start Claude Code in the repo, or in the folder that holds it, at most four levels up.
 
 **The list looks stale.** It refreshes every `refreshMinutes`. Press **Refresh** (`r`) or run `/prs` to ask now.
 
@@ -103,7 +111,7 @@ Or skip that: a service you're not logged in to shows in the pane with a **Log i
 
 ## What it calls on `$`
 
-`clock.every`, `clock.now`, `command.register`, `fs.list`, `fs.read`, `process.run` (git, gh, glab), `prompt.submit` (Review), `session.root`, `settings.read` (the user settings' `env`), `state.get`, `state.set`, `ui.open`, `ui.resolve`, `ui.toast`.
+`clock.every`, `clock.now`, `command.register`, `fs.list`, `fs.read`, `process.run` (git, gh, glab, az), `prompt.submit` (Review), `session.root`, `settings.read` (the user settings' `env`), `state.get`, `state.set`, `ui.open`, `ui.resolve`, `ui.toast`.
 
 ## Commands it runs
 
@@ -112,7 +120,9 @@ Or skip that: a service you're not logged in to shows in the pane with a **Log i
 | `git -C <repo> remote -v` | Each refresh, in each repo found |
 | `gh api graphql` | Each refresh: one request covering your PRs, your review requests and each repo's latest |
 | `glab api graphql --hostname <host>` | Each refresh, one request per GitLab host |
-| `gh auth login --with-token`, `glab auth login --hostname <host> --stdin` | When you paste a token after Log in |
+| `az devops configure --list` | Each refresh, to find `az`'s default organisation and project |
+| `az repos pr list` | Each refresh, for `az`'s default project and each project a repo is on: two per project (`--creator=me`, `--reviewer=me`) and one per repo |
+| `gh auth login --with-token`, `glab auth login --hostname <host> --stdin`, `az devops login --organization=<org>` | When you paste a token after Log in |
 
 A refresh happens at session start, on Refresh or `/prs`, and on the timer. Those and a login are the only network calls, and the queries only read.
 

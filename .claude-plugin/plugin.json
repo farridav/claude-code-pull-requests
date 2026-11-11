@@ -1,7 +1,7 @@
 {
   "name": "pull-requests",
   "version": "0.1.0",
-  "description": "Open pull requests from GitHub and GitLab in a pane beside the chat: the session's own repos first, then yours elsewhere, each with its checks, review and draft state, a Review button that asks Claude to review it, and Log in for a service that needs it",
+  "description": "Open pull requests from GitHub, GitLab and Azure DevOps in a pane beside the chat: the session's own repos first, then yours elsewhere, each with its checks, review and draft state, a Review button that asks Claude to review it, and Log in for a service that needs it",
   "author": {
     "name": "farridav"
   },
@@ -11,6 +11,7 @@
   "keywords": [
     "github",
     "gitlab",
+    "azure-devops",
     "pull-requests",
     "merge-requests",
     "ci",
@@ -25,10 +26,17 @@
       "default": "gitlab.com",
       "required": false
     },
+    "azureProjects": {
+      "type": "string",
+      "title": "Azure DevOps projects",
+      "description": "Comma-separated org/project pairs to ask for your pull requests, on top of az's default project and those your repos are in",
+      "default": "",
+      "required": false
+    },
     "refreshMinutes": {
       "type": "number",
       "title": "Refresh every (minutes)",
-      "description": "How often the pane asks GitHub and GitLab again",
+      "description": "How often the pane asks GitHub, GitLab and Azure DevOps again",
       "default": 5,
       "required": false
     }

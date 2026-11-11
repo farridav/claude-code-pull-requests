@@ -49,3 +49,27 @@ export const GITHUB_DATA = {
     ],
   },
 }
+
+/** The fields parseAzure reads, in the shape a real `az repos pr list --output=json` prints, with made-up names. */
+export const AZURE_DATA = [
+  {
+    pullRequestId: 42,
+    title: 'Add offline maps',
+    isDraft: true,
+    creationDate: '2026-11-05T09:00:00.361658+00:00',
+    mergeStatus: 'conflicts',
+    createdBy: { displayName: 'Sam Lee', uniqueName: 'sam@acme.test' },
+    reviewers: [{ vote: 10 }, { vote: -5 }],
+    repository: { name: 'Blade-Android', project: { name: 'Ground Control' } },
+  },
+  {
+    pullRequestId: 43,
+    title: 'Bump the SDK',
+    isDraft: false,
+    creationDate: '2026-11-06T09:00:00.100040+00:00',
+    mergeStatus: 'succeeded',
+    createdBy: { displayName: 'Robin', uniqueName: 'robin@acme.test' },
+    reviewers: [{ vote: 5 }, { vote: 0 }],
+    repository: { name: 'Blade-Android', project: { name: 'Ground Control' } },
+  },
+]

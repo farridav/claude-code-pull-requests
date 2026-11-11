@@ -4,7 +4,7 @@ import type { Register } from 'claude-code'
 import type { Login } from '../types'
 import type { Io } from './prs'
 import type { Group } from './prs'
-import { checksMark, fetchPulls, groupPulls, isHostName, logIn, plural, readLocalRepos, reference, shortName, stateMarks, tally, tokenPage } from './prs'
+import { checksMark, fetchPulls, groupPulls, isAzureProject, isHostName, logIn, plural, readLocalRepos, reference, shortName, stateMarks, tally, tokenPage } from './prs'
 
 const PANE = 'pull-requests'
 const TITLE = 'Pull requests'
@@ -26,7 +26,11 @@ export const register: Register = (on, options) => {
       .map(host => host.trim().toLowerCase())
       .filter(isHostName),
   )
-  // Never more often than once a minute: every refresh calls the GitHub and GitLab APIs.
+  const azureProjects = String(options.azureProjects ?? '')
+    .split(',')
+    .map(project => project.trim())
+    .filter(isAzureProject)
+  // Never more often than once a minute: every refresh calls the services' APIs.
   const refreshMs = Math.max(1, Number(options.refreshMinutes ?? 5)) * 60_000
 
   // Module variables start over on a reload; session.start runs again then.
@@ -50,7 +54,7 @@ export const register: Register = (on, options) => {
         await update($, loadingAtom, () => true)
         try {
           const repos = await readLocalRepos(local, await $.session.root())
-          const { pulls, errors, logins } = await fetchPulls(local, repos, gitlabHosts)
+          const { pulls, errors, logins } = await fetchPulls(local, repos, gitlabHosts, azureProjects)
           await update($, reposAtom, () => repos)
           await update($, pullsAtom, () => pulls)
           await update($, errorsAtom, () => errors)
@@ -65,7 +69,7 @@ export const register: Register = (on, options) => {
         refreshing = null
       }))
 
-    await $.command.register({ name: 'prs', description: 'Show open pull requests from GitHub and GitLab in a pane' })
+    await $.command.register({ name: 'prs', description: 'Show open pull requests from GitHub, GitLab and Azure DevOps in a pane' })
     void $.ui.open({ id: PANE, title: TITLE })
     void refreshNow().catch(() => 0)
     $.clock.every(refreshMs, () => void refreshNow?.().catch(() => 0))
@@ -111,7 +115,7 @@ export const register: Register = (on, options) => {
       await refresh()
     }
     const loginCard = (login: Login) => {
-      const name = login.service === 'github' ? 'GitHub' : `GitLab ${login.host}`
+      const name = { github: 'GitHub', gitlab: `GitLab ${login.host}`, azure: `Azure DevOps ${login.host.split('/')[1]}` }[login.service]
       const isOpen = loggingIn === login.host
       return (
         <Box flexDirection="column" rowGap={1} marginTop={1} paddingX={1} borderStyle="round" borderColor="warning">
@@ -131,7 +135,9 @@ export const register: Register = (on, options) => {
             <Box flexDirection="column" rowGap={1}>
               <Text>
                 <Link href={tokenPage(login)}>Make a token</Link>
-                <Text dimColor> with its scopes filled in, then paste it here.</Text>
+                <Text dimColor>
+                  {login.service === 'azure' ? ' with the Code (Read) scope' : ' with its scopes filled in'}, then paste it here.
+                </Text>
               </Text>
               <Input
                 key={`token:${login.host}`}
@@ -223,7 +229,7 @@ export const register: Register = (on, options) => {
       <Box flexDirection="column">
         <Box justifyContent="space-between" alignItems="center" columnGap="sm">
           {isLoading ? (
-            <Text color="warning">Checking GitHub and GitLab…</Text>
+            <Text color="warning">Checking for pull requests…</Text>
           ) : checkedAt ? (
             <Text wrap="truncate">
               <Text bold>{plural(pulls.length, 'open pull request')}</Text>

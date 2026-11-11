@@ -1,4 +1,4 @@
 {
-  "description": "Pull requests pane: session.start finds the session's git repos and their GitHub and GitLab remotes, registers /prs and opens the pane; a timer and the pane's Refresh ask gh and glab for open pull requests; ui.render draws them grouped by repo",
+  "description": "Pull requests pane: session.start finds the session's git repos and their GitHub, GitLab and Azure DevOps remotes, registers /prs and opens the pane; a timer and the pane's Refresh ask gh, glab and az for open pull requests; ui.render draws them grouped by repo",
   "modules": ["./register.tsx"]
 }
