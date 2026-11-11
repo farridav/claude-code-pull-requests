@@ -2,7 +2,7 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import type { LocalRepo } from '../types'
 import { GITHUB_DATA } from './fixtures'
-import { clean, dedupe, isLinkOn, githubQuery, gitlabQuery, groupPulls, parseGithub, parseGitlab, parseRemote, serviceOf, isHostName, stateMarks, tally } from '../hooks/prs'
+import { clean, dedupe, isLinkOn, githubQuery, gitlabQuery, groupPulls, parseGithub, parseGitlab, parseRemote, serviceOf, isHostName, shortName, stateMarks, tally, tokenPage } from '../hooks/prs'
 
 describe('remotes', () => {
   test('reads every URL form git writes', () => {
@@ -89,6 +89,25 @@ describe('GitLab', () => {
     expect(dedupe(pulls)).toEqual([
       expect.objectContaining({ number: 7, checks: 'pending', review: 'approved', isReviewing: true, headRepo: null }),
     ])
+  })
+})
+
+describe('names', () => {
+  test('a path nested in groups shows as its project, and a long one is cut', () => {
+    expect(shortName('acme/website', 20)).toBe('acme/website')
+    expect(shortName('web/teams/planning/dscoe/dscoe_core/app', 22)).toBe('app')
+    expect(shortName('web/teams/a-very-long-project-name', 12)).toBe('a-very-long…')
+  })
+})
+
+describe('logins', () => {
+  test('the token page asks for the scopes each CLI needs, on the host asked', () => {
+    expect(tokenPage({ service: 'github', host: 'github.com' })).toBe(
+      'https://github.com/settings/tokens/new?scopes=repo,read:org,gist&description=Claude%20Code%20pull%20requests',
+    )
+    expect(tokenPage({ service: 'gitlab', host: 'gitlab.example.com' })).toBe(
+      'https://gitlab.example.com/-/user_settings/personal_access_tokens?name=Claude%20Code%20pull%20requests&scopes=api,write_repository',
+    )
   })
 })
 
