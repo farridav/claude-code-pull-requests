@@ -1,6 +1,6 @@
 import type { FsEntry, ProcessRunInit, ProcessRunResult } from 'claude-code'
 
-import type { LocalRepo, PullRequest } from '../types'
+import type { LocalRepo, Login, PullRequest } from '../types'
 
 /** The file and process access the mod needs, handed in by the hooks module. */
 export type Io = {
@@ -311,7 +311,7 @@ async function graphql(io: Io, argv: string[]): Promise<{ data: Record<string, u
   return { data: body.data ?? null, error: failure }
 }
 
-export type Fetched = { pulls: PullRequest[]; errors: string[] }
+export type Fetched = { pulls: PullRequest[]; errors: string[]; logins: Login[] }
 
 /**
  * Every open PR worth showing: one gh request for GitHub, and one glab request
@@ -327,16 +327,19 @@ export async function fetchPulls(io: Io, repos: readonly LocalRepo[], gitlabHost
 
   const github = graphql(io, ['gh', 'api', 'graphql', '-f', `query=${githubQuery(githubPaths.slice(0, MAX_PATHS_PER_HOST))}`]).then(({ data, error }) => ({
     pulls: data ? parseGithub(data as Parameters<typeof parseGithub>[0]).filter(pull => isLinkOn(pull.url, 'github.com')) : [],
-    error: error && `GitHub: ${error}`,
+    ...(error && /gh auth login|401|bad credentials|unauthori[sz]ed/i.test(error)
+      ? { error: null, login: { service: 'github', host: 'github.com' } satisfies Login }
+      : { error: error && `GitHub: ${error}`, login: null }),
   }))
   const gitlab = [...gitlabByHost].map(([host, paths]) =>
     graphql(io, ['glab', 'api', 'graphql', '--hostname', host, '-f', `query=${gitlabQuery(paths.slice(0, MAX_PATHS_PER_HOST))}`]).then(({ data, error }) => {
       // GitLab answers an anonymous query too, with no current user.
       const isAnonymous = data !== null && data.currentUser === null
-      const failure = isAnonymous || (error && /401|unauthori[sz]ed/i.test(error)) ? `not logged in; run glab auth login --hostname ${host}` : error
+      const isLoggedOut = isAnonymous || Boolean(error && /401|unauthori[sz]ed/i.test(error))
       return {
         pulls: data ? parseGitlab(host, data as Parameters<typeof parseGitlab>[1]).filter(pull => isLinkOn(pull.url, host)) : [],
-        error: failure && `GitLab ${host}: ${failure}`,
+        error: !isLoggedOut && error ? `GitLab ${host}: ${error}` : null,
+        login: isLoggedOut ? ({ service: 'gitlab', host } satisfies Login) : null,
       }
     }),
   )
@@ -344,7 +347,29 @@ export async function fetchPulls(io: Io, repos: readonly LocalRepo[], gitlabHost
   return {
     pulls: dedupe(results.flatMap(result => result.pulls)),
     errors: results.map(result => result.error).filter((error): error is string => Boolean(error)),
+    logins: results.flatMap(result => (result.login ? [result.login] : [])),
   }
+}
+
+const TOKEN_NAME = encodeURIComponent('Claude Code pull requests')
+
+/** The page that makes a token with the scopes gh or glab asks for, filled in. */
+export function tokenPage(login: Login): string {
+  return login.service === 'github'
+    ? `https://github.com/settings/tokens/new?scopes=repo,read:org,gist&description=${TOKEN_NAME}`
+    : `https://${login.host}/-/user_settings/personal_access_tokens?name=${TOKEN_NAME}&scopes=api,write_repository`
+}
+
+/** Logs gh or glab in with a pasted token, passed on stdin so it never sits in an argument list. Resolves to the failure, or null. */
+export async function logIn(io: Io, login: Login, token: string): Promise<string | null> {
+  const argv =
+    login.service === 'github'
+      ? ['gh', 'auth', 'login', '--hostname', login.host, '--with-token']
+      : ['glab', 'auth', 'login', '--hostname', login.host, '--stdin']
+  const ran = await io
+    .run(argv, { env: CLI_ENV, stdin: token.trim(), timeoutMs: 30_000 })
+    .catch(error => ({ exitCode: 1, stdout: '', stderr: String(error) }))
+  return ran.exitCode === 0 ? null : clean(ran.stderr.trim().split('\n')[0] || 'login failed')
 }
 
 /** One entry per PR: one of yours in a workspace repo comes back from two searches. */
@@ -435,6 +460,13 @@ export function tally(pulls: readonly PullRequest[]): Mark[] {
     counts.set(mark.text, { ...mark, count: (seen?.count ?? 0) + 1 })
   }
   return [...counts.values()].map(({ text, color, count }) => ({ text: `${text}${count}`, color }))
+}
+
+/** A repo's name fitted to `room`: a GitLab path nested in groups shows as its project alone. */
+export function shortName(name: string, room: number): string {
+  const parts = name.split('/')
+  const one = parts.length > 2 ? (parts.at(-1) ?? name) : name
+  return one.length > room ? `${one.slice(0, Math.max(room - 1, 1))}…` : one
 }
 
 export function plural(count: number, noun: string): string {

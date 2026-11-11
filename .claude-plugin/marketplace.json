@@ -2,12 +2,16 @@
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "claude-code-pull-requests",
   "description": "Claude Code mods for keeping an eye on pull requests",
-  "owner": { "name": "farridav" },
+  "owner": {
+    "name": "farridav"
+  },
   "plugins": [
     {
       "name": "pull-requests",
-      "description": "Open pull requests from GitHub and GitLab in a pane beside the chat: the session's own repos first, then yours elsewhere, each with its checks, review and draft state",
-      "author": { "name": "farridav" },
+      "description": "Open pull requests from GitHub and GitLab in a pane beside the chat: the session's own repos first, then yours elsewhere, each with its checks, review and draft state, a Review button that asks Claude to review it, and Log in for a service that needs it",
+      "author": {
+        "name": "farridav"
+      },
       "category": "development",
       "homepage": "https://github.com/farridav/claude-code-pull-requests",
       "source": "./"

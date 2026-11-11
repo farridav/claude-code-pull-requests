@@ -21,6 +21,9 @@ export type PullRequest = {
   updatedAt: string
 }
 
+/** A service the pane could not read for want of a login: GitHub, or one GitLab host. */
+export type Login = { service: 'github' | 'gitlab'; host: string }
+
 /** A git repo in the session and the `host/path` of each of its remotes. */
 export type LocalRepo = {
   /** Its path relative to the session root, or the folder's name when it is the root. */
@@ -37,6 +40,10 @@ declare module 'claude-code' {
       errors: string[]
       /** The projects folded shut in the pane, by name. */
       folded: string[]
+      /** The services that need a login, each drawn with a Log in button. */
+      logins: Login[]
+      /** The host whose token box is open, or null. */
+      loggingIn: string | null
       /** True while a refresh is in flight. */
       isLoading: boolean
       /** ISO time of the last finished refresh, or null before the first. */
