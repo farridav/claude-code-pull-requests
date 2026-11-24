@@ -7,24 +7,41 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release
+
+# Sets plugin.json to the published tag's version on main, moves the tag onto
+# that commit and attaches the package. It pushes with the RELEASE_DEPLOY_KEY
+# deploy key, since deploy keys can bypass the main ruleset and GitHub Actions
+# can't on a personal repo. Moving the tag and adding the package after
+# publishing need immutable releases left off.
 jobs:
-  check_version:
+  release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
-          persist-credentials: false
+          ref: main
+          ssh-key: ${{ secrets.RELEASE_DEPLOY_KEY }}
 
-      # Reverting a published release needs immutable releases left off.
-      - name: Check the tag matches plugin.json
+      # ponytail: commits on main as it is now, so anything merged between
+      # publishing and this run lands in the release too.
+      - name: Bump plugin.json on main and move the tag onto it
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          jq --arg version "${TAG#v}" '.version = $version' .claude-plugin/plugin.json > plugin.json.tmp
+          mv plugin.json.tmp .claude-plugin/plugin.json
+          git diff --quiet && exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "41898729+github-actions[bot]@users.noreply.github.com"
+          git commit -am "Release $TAG"
+          git push origin HEAD:main
+          git tag -f "$TAG"
+          git push -f origin "refs/tags/$TAG"
+
+      - name: Attach the packaged plugin
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.event.release.tag_name }}
-        run: |
-          version=$(jq -r .version .claude-plugin/plugin.json)
-          if [ "v$version" != "$TAG" ]; then
-            echo "::error::$TAG doesn't match plugin.json ($version). Run make version, merge it, then publish the draft."
-            gh release edit "$TAG" --draft=true
-            gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$TAG"
-            exit 1
-          fi
+        run: gh release upload "$TAG" "$(make --silent package)" --clobber

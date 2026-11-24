@@ -48,9 +48,7 @@ The maintainer adds them if you can't.
 ## Releasing (maintainers)
 
 1. Label the merged pull requests (`major` for breaking changes, `minor`, `patch`; patch by default). Release Drafter keeps a draft release with the next version and its notes.
-2. In a pull request, run `make version`. It sets `plugin.json` to the draft's version (or `make version VERSION=x.y.z` to pick one).
-3. Merge it. The draft takes that version and gets `pull-requests-vx.y.z.plugin` attached.
-4. Review the draft's notes and publish it. Publish it any earlier and the release workflow puts it back to a draft.
+2. Review the draft's notes and publish it. The release workflow sets `plugin.json` to that version on main, moves the tag onto that commit and attaches `pull-requests-vx.y.z.plugin`.
 
 ## Code of conduct
 
