@@ -1,0 +1,30 @@
+---
+name: Release
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  check_version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Reverting a published release needs immutable releases left off.
+      - name: Check the tag matches plugin.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version=$(jq -r .version .claude-plugin/plugin.json)
+          if [ "v$version" != "$TAG" ]; then
+            echo "::error::$TAG doesn't match plugin.json ($version). Run make version, merge it, then publish the draft."
+            gh release edit "$TAG" --draft=true
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$TAG"
+            exit 1
+          fi
