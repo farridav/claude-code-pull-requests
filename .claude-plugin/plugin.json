@@ -1,6 +1,6 @@
 {
   "name": "pull-requests",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Open pull requests from GitHub, GitLab and Azure DevOps in a pane beside the chat: the session's own repos first, then yours elsewhere, each with its checks, review and draft state, a Review button that asks Claude to review it, and Log in for a service that needs it",
   "author": {
     "name": "farridav"

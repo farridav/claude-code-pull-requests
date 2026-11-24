@@ -151,11 +151,10 @@ CI (`.github/workflows/build.yml`) runs `deps`, `check`, `test` and `package` on
 
 ## Releasing
 
-1. Merge pull requests as usual, labelled so they land under the right heading (`feature`/`enhancement`, `fix`/`bugfix`/`bug`, `chore`/`dependencies`/`documentation`). [Release Drafter](https://github.com/release-drafter/release-drafter) keeps a draft of the next release up to date. Until the version is bumped, the draft's title says it isn't ready.
-2. When you're ready, bump the version in a pull request with `make version VERSION=x.y.z` and merge it. The draft becomes `vx.y.z`, and CI attaches `pull-requests-vx.y.z.plugin` to it.
-3. Publish the draft.
+1. Merge pull requests as usual, labelled so they land under the right heading (`feature`/`enhancement`, `fix`/`bugfix`/`bug`, `chore`/`dependencies`/`documentation`) and version bump (`major`/`minor`/`patch`). [Release Drafter](https://github.com/release-drafter/release-drafter) keeps a draft of the next release up to date.
+2. Publish the draft.
 
-Installs update when the version in `plugin.json` changes, so merging the bump is when people get it; publish soon after. Releases are immutable once published, which is why CI attaches the package to the draft beforehand. `make version` refuses a version that's already released. The version changes only through pull requests, so CI never pushes to `main`.
+Publishing runs `.github/workflows/release.yml`. It sets `plugin.json` to the release's version on `main`, moves the tag onto that commit and attaches `pull-requests-vx.y.z.plugin`. Installs update when the version in `plugin.json` changes, so publishing is when people get it. It pushes with a write deploy key stored as the `RELEASE_DEPLOY_KEY` secret in the `release` environment, which only `v*` tags can use, because deploy keys are on the `main` ruleset's bypass list. Immutable releases must stay off so the tag can move.
 
 ## Contributing
 
