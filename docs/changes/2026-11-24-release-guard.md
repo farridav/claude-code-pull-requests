@@ -27,6 +27,6 @@ flowchart LR
 | `Makefile` | `version` target and `VERSION` removed | Nobody bumps by hand any more |
 | `README.md`, `CONTRIBUTING.md` | Releasing steps rewritten | They now describe the two steps that remain |
 
-Repo settings this relies on: a write deploy key ("Release workflow") whose private half is the `RELEASE_DEPLOY_KEY` secret, deploy keys on the `main` ruleset's bypass list, and immutable releases off. GitHub Actions can't be a bypass actor on a personal-account repo, which is why it's a deploy key.
+Repo settings this relies on: a write deploy key ("Release workflow") whose private half is the `RELEASE_DEPLOY_KEY` secret in the `release` environment (only `v*` tags can use it), deploy keys on the `main` ruleset's bypass list, and immutable releases off. GitHub Actions can't be a bypass actor on a personal-account repo, which is why it's a deploy key.
 
 Not acted on: `jq -r .version .claude-plugin/plugin.json` appears only in the Makefile's `package` target now, so there's nothing to extract.

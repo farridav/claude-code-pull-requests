@@ -154,7 +154,7 @@ CI (`.github/workflows/build.yml`) runs `deps`, `check`, `test` and `package` on
 1. Merge pull requests as usual, labelled so they land under the right heading (`feature`/`enhancement`, `fix`/`bugfix`/`bug`, `chore`/`dependencies`/`documentation`) and version bump (`major`/`minor`/`patch`). [Release Drafter](https://github.com/release-drafter/release-drafter) keeps a draft of the next release up to date.
 2. Publish the draft.
 
-Publishing runs `.github/workflows/release.yml`. It sets `plugin.json` to the release's version on `main`, moves the tag onto that commit and attaches `pull-requests-vx.y.z.plugin`. Installs update when the version in `plugin.json` changes, so publishing is when people get it. It pushes with a write deploy key stored as the `RELEASE_DEPLOY_KEY` secret, because deploy keys are on the `main` ruleset's bypass list. Immutable releases must stay off so the tag can move.
+Publishing runs `.github/workflows/release.yml`. It sets `plugin.json` to the release's version on `main`, moves the tag onto that commit and attaches `pull-requests-vx.y.z.plugin`. Installs update when the version in `plugin.json` changes, so publishing is when people get it. It pushes with a write deploy key stored as the `RELEASE_DEPLOY_KEY` secret in the `release` environment, which only `v*` tags can use, because deploy keys are on the `main` ruleset's bypass list. Immutable releases must stay off so the tag can move.
 
 ## Contributing
 

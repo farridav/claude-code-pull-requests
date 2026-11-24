@@ -13,11 +13,13 @@ concurrency:
 # Sets plugin.json to the published tag's version on main, moves the tag onto
 # that commit and attaches the package. It pushes with the RELEASE_DEPLOY_KEY
 # deploy key, since deploy keys can bypass the main ruleset and GitHub Actions
-# can't on a personal repo. Moving the tag and adding the package after
-# publishing need immutable releases left off.
+# can't on a personal repo. The key lives in the release environment, which
+# only v* tags can use. Moving the tag and adding the package after publishing
+# need immutable releases left off.
 jobs:
   release:
     runs-on: ubuntu-latest
+    environment: release
     steps:
       - uses: actions/checkout@v7
         with:
